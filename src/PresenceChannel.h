@@ -129,7 +129,8 @@
 // Presence Hardware
 #define VAL_PM_PS_None 0
 #define VAL_PM_PS_Pir 1
-#define VAL_PM_PS_Hf 2
+#define VAL_PM_PS_MR24xxB1 2
+#define VAL_PM_PS_LD2410 3
 
 // Presence Hardware
 #define VAL_PM_LUX_None 0
@@ -212,7 +213,7 @@ class PresenceChannel : public OpenKNX::Channel
     void startReset();
     void processReset();
     void onReset();
-    
+
     void startActorState();
     void processActorState();
 
@@ -263,7 +264,7 @@ class PresenceChannel : public OpenKNX::Channel
     uint32_t pBrightnessOffDelayTime = 0;  // brightness off delay
     uint8_t pLeaveRoomMode = 0; // used for leave room SM
     uint8_t pLastLockState = 255; // ensures sending just changed Lock states
-     
+
   public:
     PresenceChannel(uint8_t iChannelNumber);
     ~PresenceChannel();
@@ -273,7 +274,7 @@ class PresenceChannel : public OpenKNX::Channel
 
     void processInputKo(GroupObject &iKo, int8_t iKoIndex = -1);
     static void showHelp();
-    bool processCommand(const std::string iCmd, bool iDebugKo); 
+    bool processCommand(const std::string iCmd, bool iDebugKo);
     void setup();
     void loop();
 };

@@ -27,7 +27,8 @@
                   <Enumeration Text="kein Sensor" Value="0" Id="%AID%_PT-PresenceSensor_EN-0" />
                   <Enumeration Text="PIR-Sensor" Value="1" Id="%AID%_PT-PresenceSensor_EN-1" />
                   <Enumeration Text="(HF) MR24xxB1" Value="2" Id="%AID%_PT-PresenceSensor_EN-2" />
-                </TypeRestriction>
+                  <Enumeration Text="(HF) LD2410(B)" Value="3" Id="%AID%_PT-PresenceSensor_EN-3" />
+                 </TypeRestriction>
               </ParameterType>
               <ParameterType Id="%AID%_PT-LuxSensor" Name="LuxSensor">
                 <TypeRestriction Base="Value" SizeInBit="2">

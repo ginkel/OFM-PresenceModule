@@ -64,7 +64,7 @@ void Presence::showHelp()
     PresenceChannel::showHelp();
 }
 
-bool Presence::processCommand(const std::string iCmd, bool iDebugKo) 
+bool Presence::processCommand(const std::string iCmd, bool iDebugKo)
 {
     bool lResult = false;
     if (iCmd.substr(0, 3) != "vpm" || iCmd.length() < 5)
@@ -72,19 +72,19 @@ bool Presence::processCommand(const std::string iCmd, bool iDebugKo)
 
     if (iCmd.substr(4, 2) == "ch")
     {
-        // Command ch<nn>: 
+        // Command ch<nn>:
         // find channel and dispatch
         uint16_t lIndex = std::stoi(iCmd.substr(6, 2)) - 1;
         if (lIndex < mNumChannels) {
             // this is a channel request
             lResult = mChannel[lIndex]->processCommand(iCmd, iDebugKo);
         }
-    } 
+    }
     else if (iCmd.substr(4, 2) == "hw")
     {
         // output hardware move/presence state
         logInfoP("Move %d, Presence %d", mMove, mPresence);
-        if (iDebugKo) 
+        if (iDebugKo)
         {
             openknx.console.writeDiagenoseKo("Move %d, Pres %d", mMove, mPresence);
         }
@@ -94,7 +94,7 @@ bool Presence::processCommand(const std::string iCmd, bool iDebugKo)
     {
         // Commands starting with vpm are presence diagnose commands
         logInfoP("VPM command with bad args");
-        if (iDebugKo) 
+        if (iDebugKo)
         {
             openknx.console.writeDiagenoseKo("VPM: bad args");
         }
@@ -125,20 +125,20 @@ void Presence::processInputKo(GroupObject &iKo)
         case PM_KoSensitivity:
         {
             int8_t lSensitivity = iKo.value(getDPT(VAL_DPT_5));
-            if (mSensitivity != lSensitivity) 
+            if (mSensitivity != lSensitivity)
             {
-#ifdef HF_POWER_PIN
+#ifdef HF_SENSOR_MR24xxB1
                 mPresenceSensor->sendCommand(RadarCmd_WriteSensitivity, lSensitivity);
 #endif
             }
             break;
         }
-        case PM_KoScenario: 
+        case PM_KoScenario:
         {
             int8_t lScenario = iKo.value(getDPT(VAL_DPT_5));
             if (mScenario != lScenario)
             {
-#ifdef HF_POWER_PIN
+#ifdef HF_SENSOR_MR24xxB1
                 mPresenceSensor->sendCommand(RadarCmd_WriteScene, lScenario);
 #endif
             }
@@ -146,7 +146,12 @@ void Presence::processInputKo(GroupObject &iKo)
         }
         case PM_KoHfReset:
             // mPresenceSensor->sendCommand(RadarCmd_ResetSensor);
+#ifdef HF_SENSOR_MR24xxB1
             startPowercycleHfSensor();
+#endif
+#ifdef HF_SENSOR_LD2410
+            mPresenceSensor->restartSensor();
+#endif
             break;
         case PM_KoLEDMove:
             processLED(iKo.value(getDPT(VAL_DPT_1)), CallerKnxMove);
@@ -179,14 +184,26 @@ bool Presence::getHardwareMove()
 // Starting all required sensors, this call may be blocking (with delay)
 void Presence::startSensors()
 {
-    if (ParamPM_HWPresence == VAL_PM_PS_Hf)
+#ifdef HF_SENSOR_MR24xxB1
+    if (ParamPM_HWPresence == VAL_PM_PS_MR24xxB1)
     {
-#ifdef HF_POWER_PIN
         mPresenceSensor = (SensorMR24xxB1 *)Sensor::factory(SENS_MR24xxB1, MeasureType::Pres);
         mPresenceSensor->defaultSensorParameters((ParamPM_HfScenario) - 1, ParamPM_HfSensitivity);
-#endif
     }
-    
+#endif
+
+#ifdef HF_SENSOR_LD2410
+    if (ParamPM_HWPresence == VAL_PM_PS_LD2410)
+    {
+        logDebugP("Creating SensorLD2410...");
+        mPresenceSensor = (SensorLD2410 *)Sensor::factory(SENS_LD2410, MeasureType::Pres);
+    }
+    else
+    {
+        logDebugP("NOT creating SensorLD2410, ParamPM_HWPresence == %d...", ParamPM_HWPresence);
+    }
+#endif
+
     switch (ParamPM_HWLux)
     {
         case VAL_PM_LUX_VEML:
@@ -204,9 +221,11 @@ void Presence::startSensors()
 
 void Presence::switchHfSensor(bool iOn)
 {
-#ifdef HF_POWER_PIN
+    uint8_t hfPowerPinActiveOn = HF_POWER_PIN_ACTIVE_ON;
+
+#ifdef HF_SENSOR_MR24xxB1
     if (smartMF.hardwareRevision() == 1) {
-        iOn = !iOn;
+        hfPowerPinActiveOn = !hfPowerPinActiveOn;
     }
     else
     {
@@ -226,7 +245,7 @@ void Presence::switchHfSensor(bool iOn)
             0x175A3527,
             0x173C1E27
         };
-        
+
         uint32_t lSerial = knx.platform().uniqueSerialNumber();
         SERIAL_DEBUG.printf("\nswitchHfSensor: Turning Sensor on: %i\n", iOn);
         SERIAL_DEBUG.printf("Serial HEX 32: %08lX\n", lSerial);
@@ -237,12 +256,15 @@ void Presence::switchHfSensor(bool iOn)
             if (lSerial == special[i])
             {
                 SERIAL_DEBUG.printf("switchHfSensor: Special board number %i found\n", i);
-                iOn = !iOn;
+                hfPowerPinActiveOn = !hfPowerPinActiveOn;
                 break;
             }
     }
+#endif
+
+#if defined(HF_SENSOR_MR24xxB1)
     SERIAL_DEBUG.printf("switchHfSensor: HF_POWER_PIN will be set to: %i\n", iOn);
-    digitalWrite(HF_POWER_PIN, iOn ? HIGH : LOW);
+    digitalWrite(HF_POWER_PIN, hfPowerPinActiveOn == LOW ? !iOn : iOn);
 #endif
 }
 
@@ -265,7 +287,7 @@ void Presence::processPowercycleHfSensor()
 // - turn on and off by hardware if selected in settings
 // - turn off on lock through day phase
 // - be aware of multiple channels creating led locks
-// - turn on and off by knx 
+// - turn on and off by knx
 // - restore old led state on lock removal
 void Presence::processLED(bool iOn, LedCaller iCaller)
 {
@@ -283,7 +305,7 @@ void Presence::processLED(bool iOn, LedCaller iCaller)
         case CallerLock:
             sLedsLocked += (iOn) ? 1 : -1;
             // LEDs will keep the old values
-            if (sLedsLocked <= 0) 
+            if (sLedsLocked <= 0)
                 sLedsLocked = 0;
             break;
         case CallerMove:
@@ -325,8 +347,8 @@ void Presence::processLED(bool iOn, LedCaller iCaller)
 
 void Presence::processHardwarePresence()
 {
-  #ifdef HF_POWER_PIN
-    if (mPresenceSensor != 0) 
+#ifdef HF_SENSOR_MR24xxB1
+    if (mPresenceSensor != 0)
     {
         float lValue = 0;
         if (Sensor::measureValue(MeasureType::Pres, lValue) && lValue != mPresenceCombined)
@@ -336,7 +358,7 @@ void Presence::processHardwarePresence()
             uint8_t lMove;
             uint8_t lFall;
             uint8_t lAlarm;
-            if (SensorMR24xxB1::decodePresenceResult((uint8_t)lValue, lPresence, lMove, lFall, lAlarm)) 
+            if (SensorMR24xxB1::decodePresenceResult((uint8_t)lValue, lPresence, lMove, lFall, lAlarm))
             {
                 if (lPresence != mPresence)
                 {
@@ -347,7 +369,7 @@ void Presence::processHardwarePresence()
                     if (mPresence)
                         PresenceTrigger = true;
                 }
-                if (lMove != mMove) 
+                if (lMove != mMove)
                 {
                     mMove = lMove;
                     // digitalWrite(MOVE_LED_PIN, MOVE_LED_PIN_ACTIVE_ON == (mMove > 0));
@@ -381,6 +403,48 @@ void Presence::processHardwarePresence()
                 lKo.value(mSensitivity, getDPT(VAL_DPT_5));
             }
         }
+    }
+#endif
+#ifdef HF_SENSOR_LD2410
+    if (mPresenceSensor != 0)
+    {
+        float lValue = 0;
+        if (Sensor::measureValue(MeasureType::Pres, lValue) && lValue != mPresenceCombined)
+        {
+            mPresenceCombined = lValue;
+
+            bool lPresence = (((uint8_t)mPresenceCombined) & LD2410_PRESENCE) == LD2410_PRESENCE;
+            if (lPresence != mPresence)
+            {
+                mPresence = lPresence;
+                processLED(mPresence, CallerPresence);
+                knx.getGroupObject(PM_KoPresenceOut).value(mPresence, getDPT(VAL_DPT_1));
+                if (mPresence)
+                    PresenceTrigger = true;
+            }
+
+            bool lMove = (((uint8_t)mPresenceCombined) & LD2410_MOTION) == LD2410_MOTION;
+            if (lMove != mMove)
+            {
+                mMove = lMove;
+                processLED(mMove, CallerMove);
+                // knx.getGroupObject(PM_KoMoveOut).value(mMove, getDPT(VAL_DPT_5));
+                if (mMove)
+                    MoveTrigger = true;
+            }
+        }
+        if (Sensor::measureValue(MeasureType::Speed, lValue))
+        {
+            GroupObject &lKo = knx.getGroupObject(PM_KoMoveSpeedOut);
+            if ((uint8_t)lKo.value(getDPT(VAL_DPT_5001)) != (uint8_t)lValue)
+                lKo.value(lValue, getDPT(VAL_DPT_5001));
+        }
+        // if (Sensor::measureValue(MeasureType::Distance, lValue))
+        // {
+        //     GroupObject &lKo = knx.getGroupObject(PM_KoMoveSpeedOut);
+        //     if ((uint8_t)lKo.value(getDPT(VAL_DPT_5001)) != (uint8_t)lValue)
+        //         lKo.value(lValue, getDPT(VAL_DPT_5001));
+        // }
     }
 #endif
 #ifdef PIR_PIN
@@ -488,7 +552,7 @@ void Presence::loop()
         logInfoP("PM LoopTime: %i\n", millis()-lLoopTime);
 }
 
-void Presence::setup() 
+void Presence::setup()
 {
 
     if (knx.configured())
@@ -506,7 +570,7 @@ void Presence::setup()
             mChannel[lIndex]->setup();
         }
         mDoPresenceHardwareCycle = (ParamPM_HWPresence > 0) || (ParamPM_HWLux > 0);
-        if (mDoPresenceHardwareCycle) 
+        if (mDoPresenceHardwareCycle)
             startPowercycleHfSensor();
         startSensors();
     }
