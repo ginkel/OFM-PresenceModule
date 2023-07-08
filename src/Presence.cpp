@@ -222,9 +222,8 @@ void Presence::startSensors()
 
 void Presence::switchHfSensor(bool iOn)
 {
-    uint8_t hfPowerPinActiveOn = HF_POWER_PIN_ACTIVE_ON;
-
 #ifdef HF_SENSOR_MR24xxB1
+
     if (smartmf.hardwareRevision() == 1) {
         hfPowerPinActiveOn = !hfPowerPinActiveOn;
     }
@@ -261,9 +260,7 @@ void Presence::switchHfSensor(bool iOn)
                 break;
             }
     }
-#endif
 
-#if defined(HF_SENSOR_MR24xxB1)
     SERIAL_DEBUG.printf("switchHfSensor: HF_POWER_PIN will be set to: %i\n", iOn);
     digitalWrite(HF_POWER_PIN, hfPowerPinActiveOn == LOW ? !iOn : iOn);
 #endif
